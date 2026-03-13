@@ -38,13 +38,15 @@ async function sendWhatsAppMessage(to, message) {
 
 router.post("/send", async (req, res) => {
 
-  const {
-    patientName = "Paciente",
-    hrBpm,
-    thresholdBpm,
-    secondsAbove,
-    phones = []
-  } = req.body;
+   const {
+     patientName = "Paciente",
+     hrBpm,
+     thresholdBpm,
+     secondsAbove,
+     phones = [],
+     location
+   } = req.body;
+
 
   if (!hrBpm || !thresholdBpm || !secondsAbove) {
     return res.status(400).json({
@@ -77,15 +79,25 @@ router.post("/send", async (req, res) => {
   lastAlertTime = now;
 
   const message =
+let message =
 `🚨 ALERTA MIJ@
 
-Paciente: ${patientName}
+   Paciente: ${patientName}
 
-Pulso actual: ${hrBpm} bpm
-Umbral configurado: ${thresholdBpm} bpm
-Tiempo sobre umbral: ${secondsAbove} segundos.
+   Pulso actual: ${hrBpm} bpm
+   Umbral configurado: ${thresholdBpm} bpm
+   Tiempo sobre umbral: ${secondsAbove} segundos.`;
 
-Se recomienda verificar el estado del paciente.`;
+   if (location) {
+     message += `
+
+   Ubicación del paciente:
+   ${location}`;
+   }
+
+   message += `
+
+   Se recomienda verificar el estado del paciente.`;
 
   console.log("📢 Enviando alerta:", message);
 
