@@ -1,56 +1,8 @@
-const express = require('express');
-const { requireApiKey } = require('../middleware/auth');
-
+const express = require("express");
 const router = express.Router();
 
-router.post('/send', requireApiKey, async (req, res) => {
-  try {
-    const {
-      patientName = 'Paciente',
-      patientId = 'default',
-      deviceId = 'unknown',
-      hrBpm,
-      thresholdBpm,
-      secondsAbove,
-      phone = ''
-    } = req.body || {};
-
-    if (hrBpm === undefined || thresholdBpm === undefined || secondsAbove === undefined) {
-      return res.status(400).json({
-        ok: false,
-        error: 'missing_required_fields',
-        required: ['hrBpm', 'thresholdBpm', 'secondsAbove']
-      });
-    }
-
-    const alertPayload = {
-      patientName,
-      patientId,
-      deviceId,
-      hrBpm,
-      thresholdBpm,
-      secondsAbove,
-      phone,
-      receivedAt: new Date().toISOString()
-    };
-
-    console.log('Alerta recibida:', JSON.stringify(alertPayload, null, 2));
-
-    return res.json({
-      ok: true,
-      message: 'alert_received',
-      nextStep: 'Aquí se conectará WhatsApp Business Platform o Twilio SMS',
-      data: alertPayload
-    });
-  } catch (error) {
-    console.error('Error en /api/alerts/send:', error);
-    return res.status(500).json({ ok: false, error: error.message || 'internal_error' });
-  }
-});
-
-module.exports = router;
-
-const fetch = require("node-fetch");
+let lastAlertTime = 0;
+const ALERT_INTERVAL = 2 * 60 * 1000; // 2 minutos
 
 async function sendWhatsAppMessage(to, message) {
 
@@ -78,7 +30,87 @@ async function sendWhatsAppMessage(to, message) {
   });
 
   const data = await response.json();
+
   console.log("WhatsApp response:", data);
 
   return data;
 }
+
+router.post("/send", async (req, res) => {
+
+  const {
+    patientName = "Paciente",
+    hrBpm,
+    thresholdBpm,
+    secondsAbove,
+    phones = []
+  } = req.body;
+
+  if (!hrBpm || !thresholdBpm || !secondsAbove) {
+    return res.status(400).json({
+      ok: false,
+      error: "missing_required_fields",
+      required: ["hrBpm", "thresholdBpm", "secondsAbove"]
+    });
+  }
+
+  if (!phones || phones.length === 0) {
+    return res.status(400).json({
+      ok: false,
+      error: "phones_required"
+    });
+  }
+
+  const now = Date.now();
+
+  if (now - lastAlertTime < ALERT_INTERVAL) {
+
+    console.log("⚠️ alerta bloqueada por anti-spam");
+
+    return res.json({
+      ok: true,
+      message: "alert_blocked_by_antispam"
+    });
+
+  }
+
+  lastAlertTime = now;
+
+  const message =
+`🚨 ALERTA MIJ@
+
+Paciente: ${patientName}
+
+Pulso actual: ${hrBpm} bpm
+Umbral configurado: ${thresholdBpm} bpm
+Tiempo sobre umbral: ${secondsAbove} segundos.
+
+Se recomienda verificar el estado del paciente.`;
+
+  console.log("📢 Enviando alerta:", message);
+
+  for (const phone of phones) {
+
+    try {
+
+      await sendWhatsAppMessage(phone, message);
+
+      console.log("mensaje enviado a:", phone);
+
+    } catch (err) {
+
+      console.error("error enviando a", phone, err);
+
+    }
+
+  }
+
+  return res.json({
+    ok: true,
+    message: "alert_sent",
+    phones
+  });
+
+});
+
+module.exports = router;
